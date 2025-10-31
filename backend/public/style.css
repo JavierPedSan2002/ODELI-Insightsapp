@@ -1,0 +1,26 @@
+body {
+  background-color: #f1f5f9; /* gris muy claro */
+  font-family: 'Inter', sans-serif;
+}
+
+.pregunta input[type="radio"] {
+  accent-color: #2563eb; /* azul Tailwind */
+}
+
+#informacion .bg-white::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url('Odeli.jpeg') no-repeat center;
+  background-size: 300px;
+  opacity: 1;
+  filter: none;
+  z-index: 0 !important;
+  border: 3px solid red; /* 👈 solo para confirmar que existe */
+}
+
+
+#informacion .bg-white > * {
+  position: relative;
+  z-index: 10 !important;
+}
