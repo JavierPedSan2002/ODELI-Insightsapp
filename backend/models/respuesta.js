@@ -7,8 +7,9 @@ const respuestaSchema = new mongoose.Schema({
     {
       pregunta: String,
       // AÑADIDO: Este campo es VITAL para almacenar el valor numérico (1 a 5)
-      valor: Number, 
-      opcion: String 
+      valor: Number, //Para las preguntas cerradas
+      opcion: String, //Texto de la opción elegida
+      respuestaAbierta: String //Para texto libre 
     }
   ],
   // CORREGIDO: Renombrado a 'fechaEnvio' para coincidir con lo que el frontend lee y envía

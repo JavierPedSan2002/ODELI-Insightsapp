@@ -1,8 +1,10 @@
 // --- Variables Globales ---
-const BASE_URL = 'https://unlegal-adina-nonmaterialistically.ngrok-free.dev'; 
+const BASE_URL = 'https://unlegal-adina-nonmaterialistically.ngrok-free.dev';
 const API_URL = `${BASE_URL}/api/respuestas`;
 
-let satisfaccionChart; // Instancia del gráfico
+let satisfaccionChart;    // Instancia del gráfico de barras
+let donutChart;           // Instancia del gráfico donut (nivel global)
+let mostrandoDonut = false; // Indica qué gráfico está visible
 
 const preguntas = [
   "Facilidad de uso de la plataforma.",
@@ -19,9 +21,9 @@ const preguntas = [
 
 const opciones = ["Muy Mal", "Mal", "Regular", "Bien", "Excelente"];
 
-// ===================================
-// GESTIÓN DE VISTAS (SPA)
-// ===================================
+/* ===================================
+   GESTIÓN DE VISTAS (SPA)
+   =================================== */
 function handleView(viewId) {
   document.querySelectorAll('.content-view').forEach(section => section.classList.add('hidden'));
   const activeSection = document.getElementById(viewId);
@@ -35,9 +37,9 @@ function handleView(viewId) {
   if (viewId === 'tabulado') fetchAndRenderTabulated();
 }
 
-// ===================================
-// GENERACIÓN DE PREGUNTAS
-// ===================================
+/* ===================================
+   GENERACIÓN DE PREGUNTAS
+   =================================== */
 function generarPreguntas() {
   const preguntasDiv = document.getElementById('preguntas');
   if (!preguntasDiv) return;
@@ -69,9 +71,9 @@ function generarPreguntas() {
   });
 }
 
-// ===================================
-// ENVÍO DEL FORMULARIO
-// ===================================
+/* ===================================
+   ENVÍO DEL FORMULARIO
+   =================================== */
 async function handleFormSubmit(event) {
   event.preventDefault();
   const form = event.target;
@@ -106,6 +108,7 @@ async function handleFormSubmit(event) {
   const data = { empleado, departamento, respuestas, fechaEnvio: new Date().toISOString() };
 
   try {
+    // Simula pequeña espera y envía al API
     await new Promise(resolve => setTimeout(resolve, 500));
     const res = await fetch(API_URL, {
       method: 'POST',
@@ -133,9 +136,9 @@ async function handleFormSubmit(event) {
   }
 }
 
-// ===================================
-// CÁLCULO DE PROMEDIOS
-// ===================================
+/* ===================================
+   CÁLCULO DE PROMEDIOS
+   =================================== */
 function calculateAverages(data) {
   if (!data || data.length === 0) return [];
 
@@ -159,9 +162,16 @@ function calculateAverages(data) {
   });
 }
 
-// ===================================
-// PROMEDIO POR DEPARTAMENTO
-// ===================================
+/* Función auxiliar para calcular el promedio general (externa a calculateAverages) */
+function calcularPromedioGeneral(averages) {
+  if (!averages || averages.length === 0) return 0;
+  const suma = averages.reduce((acc, a) => acc + a.promedio, 0);
+  return parseFloat((suma / averages.length).toFixed(2));
+}
+
+/* ===================================
+   PROMEDIO POR DEPARTAMENTO
+   =================================== */
 function calculateAveragesByDept(data) {
   if (!data || data.length === 0) return {};
 
@@ -171,8 +181,12 @@ function calculateAveragesByDept(data) {
     if (!deptData[dept]) deptData[dept] = Array(preguntas.length).fill(0).map(() => ({ sum:0, count:0 }));
 
     survey.respuestas.forEach((r, i) => {
-      deptData[dept][i].sum += r.valor;
-      deptData[dept][i].count += 1;
+      // r.pregunta coincide con preguntas[i] en la estructura que envías
+      const idx = preguntas.indexOf(r.pregunta);
+      if (idx !== -1) {
+        deptData[dept][idx].sum += r.valor;
+        deptData[dept][idx].count += 1;
+      }
     });
   });
 
@@ -183,11 +197,13 @@ function calculateAveragesByDept(data) {
   return result;
 }
 
-// ===================================
-// DIBUJAR GRÁFICO
-// ===================================
+/* ===================================
+   DIBUJAR GRÁFICO DE BARRAS
+   =================================== */
 function renderChart(averages, averagesByDept = {}) {
-  const ctx = document.getElementById('satisfaccionChart').getContext('2d');
+  const canvas = document.getElementById('satisfaccionChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
 
   if (satisfaccionChart) satisfaccionChart.destroy();
 
@@ -195,9 +211,10 @@ function renderChart(averages, averagesByDept = {}) {
   const datasets = [{ 
     label: 'Promedio General', 
     data: averages.map(a => a.promedio),
-    backgroundColor: averages.map(val => val >= 4 ? '#2563eb' : val >= 3 ? '#7e22ce' : '#f97316')
+    backgroundColor: averages.map(v => v.promedio >= 4 ? '#2563eb' : v.promedio >= 3 ? '#7e22ce' : '#f97316')
   }];
 
+  // Incluir promedios por departamento como datasets opcionales (si existen)
   for (const dept in averagesByDept) {
     datasets.push({
       label: `Depto: ${dept}`,
@@ -211,24 +228,71 @@ function renderChart(averages, averagesByDept = {}) {
     data: { labels, datasets },
     options: {
       responsive: true,
-      maintainAspectRatio: false,
+      maintainAspectRatio: false, // importante para que ocupe todo el contenedor
       scales: {
         y: { beginAtZero:true, max:5, title: { display:true, text:'Promedio de Calificación' } },
-        x: { display:false }
+        x: { display:true }
       },
       plugins: {
         legend: { position:'bottom' },
         tooltip: {
           callbacks: { label: ctx => `Promedio: ${ctx.parsed.y}` }
+        },
+        title: {
+          display: true,
+          text: 'Calificación Promedio por Pregunta'
         }
       }
     }
   });
 }
 
-// ===================================
-// OBTENER DATOS Y RENDERIZAR
-// ===================================
+/* ===================================
+   RENDER DONUT (NIVEL GLOBAL)
+   =================================== */
+function renderDonutChart(promedioGeneral) {
+  const canvas = document.getElementById('promedioPieChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  if (donutChart) donutChart.destroy();
+
+  const restante = Math.max(0, 5 - promedioGeneral);
+
+  donutChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Nivel Global de Satisfacción', 'Restante hasta 5'],
+      datasets: [{
+        data: [promedioGeneral, restante],
+        backgroundColor: ['#2563eb', '#e5e7eb'],
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '70%',
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: {
+          callbacks: {
+            label: (context) => `${context.label}: ${context.parsed}`
+          }
+        },
+        title: {
+          display: true,
+          text: `Nivel global de satisfacción: ${promedioGeneral.toFixed(2)} / 5`
+        }
+      }
+    }
+  });
+}
+
+/* ===================================
+   OBTENER DATOS Y RENDERIZAR
+   (aquí integras renderChart y renderDonutChart)
+   =================================== */
 async function fetchAndRenderAnalytics() {
   const statusDiv = document.getElementById('grafico-status');
   statusDiv.className = 'p-3 text-sm rounded-lg text-gray-700 bg-yellow-50 border border-yellow-200';
@@ -243,12 +307,35 @@ async function fetchAndRenderAnalytics() {
       statusDiv.className = 'p-3 text-sm rounded-lg text-gray-700 bg-blue-100 border border-blue-300';
       statusDiv.textContent = 'No hay encuestas enviadas para generar gráficos.';
       if (satisfaccionChart) satisfaccionChart.destroy();
+      if (donutChart) donutChart.destroy();
       return;
     }
 
+    // --- Calcular promedios ---
     const averages = calculateAverages(data);
     const averagesByDept = calculateAveragesByDept(data);
+
+    // --- Renderizar gráfica de barras ---
     renderChart(averages, averagesByDept);
+
+    // --- Calcular promedio global correctamente ---
+    const globalAverage = calcularPromedioGeneral(averages);
+
+    // --- Renderizar gráfica donut del nivel global ---
+    renderDonutChart(globalAverage);
+
+    // asegura que la vista por defecto muestre barras (no donut)
+    // si quieres que por defecto muestre donut, cambia esto
+    mostrandoDonut = false;
+    const chartContainer = document.getElementById('chartContainer');
+    const pieContainer = document.getElementById('pieContainer');
+    if (chartContainer && pieContainer) {
+      chartContainer.classList.remove('-translate-x-full');
+      chartContainer.classList.add('translate-x-0');
+      pieContainer.classList.remove('translate-x-0');
+      pieContainer.classList.add('translate-x-full');
+    }
+
     statusDiv.className = 'hidden';
 
   } catch (error) {
@@ -258,9 +345,9 @@ async function fetchAndRenderAnalytics() {
   }
 }
 
-// ===================================
-// TABLA DE DATOS
-// ===================================
+/* ===================================
+   TABLA DE DATOS
+   =================================== */
 async function fetchAndRenderTabulated() {
   const statusDiv = document.getElementById('tabulado-status');
   const tbody = document.querySelector('#tablaRespuestas tbody');
@@ -307,9 +394,9 @@ async function fetchAndRenderTabulated() {
   }
 }
 
-// ===================================
-// EVENTOS
-// ===================================
+/* ===================================
+   EVENTOS (DOM Ready)
+   =================================== */
 document.addEventListener('DOMContentLoaded', () => {
   // Genera preguntas SOLO cuando se entra a la encuesta
   generarPreguntas();
@@ -318,30 +405,72 @@ document.addEventListener('DOMContentLoaded', () => {
   const encuestaForm = document.getElementById('encuestaForm');
   if (encuestaForm) encuestaForm.addEventListener('submit', handleFormSubmit);
 
-  // Controla el cambio de vistas
+  // Controla el cambio de vistas (nav)
   document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', () => handleView(item.dataset.view));
   });
 
-  // Mostrar por defecto la vista de "Acerca de nosotros"
-  handleView('informacion');
+  // Inicializa listeners para cambio de gráficas y export PDF
+  const btnBarras = document.getElementById('btnBarras');
+  const btnDonut = document.getElementById('btnDonut');
+  const chartContainer = document.getElementById('chartContainer');
+  const pieContainer = document.getElementById('pieContainer');
+
+  if (btnBarras && btnDonut && chartContainer && pieContainer) {
+    btnBarras.addEventListener('click', () => {
+      mostrandoDonut = false;
+      chartContainer.classList.remove('-translate-x-full');
+      chartContainer.classList.add('translate-x-0');
+      pieContainer.classList.remove('translate-x-0');
+      pieContainer.classList.add('translate-x-full');
+      btnBarras.classList.add('bg-primary-blue', 'text-white');
+      btnDonut.classList.remove('bg-primary-blue', 'text-white');
+    });
+
+    btnDonut.addEventListener('click', () => {
+      mostrandoDonut = true;
+      chartContainer.classList.add('-translate-x-full');
+      pieContainer.classList.remove('translate-x-full');
+      pieContainer.classList.add('translate-x-0');
+      btnDonut.classList.add('bg-primary-blue', 'text-white');
+      btnBarras.classList.remove('bg-primary-blue', 'text-white');
+    });
+  }
 
   // === Botón para exportar gráfico a PDF ===
   const exportBtn = document.getElementById('exportPdfBtn');
   if (exportBtn) {
     exportBtn.addEventListener('click', () => {
-      const canvas = document.getElementById('satisfaccionChart');
-      if (!canvas) return alert('El gráfico aún no se ha cargado.');
-      const imgData = canvas.toDataURL('image/png');
+      // Detectar cuál gráfica está visible (usamos la variable mostrandoDonut)
+      let canvas = null;
+      if (mostrandoDonut) {
+        canvas = document.getElementById('promedioPieChart');
+      } else {
+        canvas = document.getElementById('satisfaccionChart');
+      }
 
+      if (!canvas) return alert('El gráfico aún no se ha cargado.');
+
+      const imgData = canvas.toDataURL('image/png');
       const { jsPDF } = window.jspdf;
+
+      // Crear PDF adaptando dimensiones al canvas actual
       const pdf = new jsPDF({
         orientation: 'landscape',
         unit: 'px',
         format: [canvas.width, canvas.height]
       });
+
+      // Añadir imagen al PDF
       pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
-      pdf.save('grafico.pdf');
+
+      // Nombre según el gráfico
+      const fileName = mostrandoDonut ? 'nivel_global_satisfaccion.pdf' : 'grafico_barras_resultados.pdf';
+      pdf.save(fileName);
     });
   }
+
+  // Mostrar por defecto la vista de "Acerca de nosotros"
+  handleView('informacion');
 });
+

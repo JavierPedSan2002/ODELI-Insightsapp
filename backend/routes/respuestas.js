@@ -11,10 +11,14 @@ const Respuesta = require('../models/respuesta');
 router.post('/', async (req, res) => {
   try {
     // 1. Opcional: Validación para asegurar que todas las respuestas tengan el campo 'valor'
-    const respuestasValidas = req.body.respuestas.every(r => typeof r.valor === 'number');
+    // 1. Validación más flexible: permite preguntas abiertas o cerradas
+    const respuestasValidas = req.body.respuestas.every(r => {
+      // Una respuesta es válida si tiene valor numérico o texto libre
+      return (typeof r.valor === 'number' && !isNaN(r.valor)) || (typeof r.respuestaAbierta === 'string' && r.respuestaAbierta.trim() !== '');
+    });
 
     if (!respuestasValidas) {
-        return res.status(400).json({ mensaje: 'Error de datos: Cada respuesta debe incluir el campo "valor" numérico.' });
+      return res.status(400).json({ mensaje: 'Error: Cada respuesta debe tener un valor numérico o texto abierto.' });
     }
 
     // 2. Crear la nueva respuesta y guardar. 
